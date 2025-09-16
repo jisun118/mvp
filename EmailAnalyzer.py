@@ -1,3 +1,4 @@
+from dotenv import load_dotenv
 import streamlit as st
 import openai
 from openai import AzureOpenAI
@@ -25,6 +26,13 @@ import zipfile
 import tempfile
 import os
 import platform
+
+load_dotenv()
+
+endpoint= os.getenv("AZURE_OPENAI_ENDPOINT")
+api_key= os.getenv("AZURE_OPENAI_API_KEY")
+api_version= os.getenv("AZURE_OPENAI_API_VERSION")
+model_name= os.getenv("AZURE_OPENAI_MODEL_NAME")
 
 # 페이지 설정
 st.set_page_config(
@@ -150,7 +158,7 @@ DTSTART:{due_date_str}
 DTEND:{due_date_str}
 DTSTAMP:{now}
 SUMMARY:{task.get('task', '할일')}
-DESCRIPTION:우선순위: {task.get('priority', 'medium')}\\n담당자: {task.get('assignee', '미정')}\\n관련 이메일: {email_subject}
+DESCRIPTION:우선순위: {task.get('priority', 'medium')}\n담당자: {task.get('assignee', '미정')}\n관련 이메일: {email_subject}
 PRIORITY:{5 if task.get('priority') == 'low' else 1 if task.get('priority') == 'high' else 3}
 STATUS:NEEDS-ACTION
 END:VEVENT
@@ -503,7 +511,7 @@ class EmailAnalyzer:
     def __init__(self):
         self.client = None
     
-    def initialize_azure_openai(self, endpoint: str, api_key: str, api_version: str = "2023-12-01-preview"):
+    def initialize_azure_openai(self, endpoint: str, api_key: str, api_version: str="2024-02-15-preview"):
         """Azure OpenAI 클라이언트 초기화"""
         try:
             self.client = AzureOpenAI(
@@ -516,7 +524,7 @@ class EmailAnalyzer:
             st.error(f"Azure OpenAI 연결 실패: {str(e)}")
             return False
     
-    def analyze_email(self, email_content: str, model_name: str = "gpt-4") -> Dict[str, Any]:
+    def analyze_email(self, email_content: str, model_name: str="gpt=4") -> Dict[str, Any]:
         """이메일 내용을 분석하여 업무 요약과 할일 추출"""
         if not self.client:
             raise Exception("Azure OpenAI 클라이언트가 초기화되지 않았습니다.")
@@ -595,173 +603,119 @@ class EmailAnalyzer:
 def main():
     st.title("📧 이메일 업무 분석기")
     st.markdown("---")
-    
-    # 사이드바 - 설정
-    with st.sidebar:
-        st.header("🔧 설정")
-        
-        # Azure OpenAI 설정
-        st.subheader("Azure OpenAI 설정")
-        azure_endpoint = st.text_input(
-            "Azure OpenAI Endpoint", 
-            placeholder="https://your-resource.openai.azure.com/",
-            help="Azure OpenAI 리소스의 엔드포인트 URL"
-        )
-        
-        api_key = st.text_input(
-            "API Key", 
-            type="password",
-            help="Azure OpenAI API 키"
-        )
-        
-        model_name = st.text_input(
-            "모델 이름", 
-            value="gpt-4",
-            help="배포된 모델의 이름 (예: gpt-4, gpt-35-turbo)"
-        )
-        
-        api_version = st.selectbox(
-            "API 버전",
-            ["2023-12-01-preview", "2023-10-01-preview", "2023-08-01-preview"],
-            index=0
-        )
-        
-        st.markdown("---")
-        
-        # 파일 업로드
-        st.subheader("📎 이메일 파일 업로드")
-        uploaded_file = st.file_uploader(
-            "이메일 파일 선택",
-            type=['eml', 'msg', 'txt'],
-            help="EML, MSG, 또는 텍스트 파일을 업로드하세요"
-        )
-        
-        st.markdown("---")
-                    
+
+    # 세션 상태 초기화
+    if 'email_input' not in st.session_state:
+        st.session_state.email_input = ""
+
     # 메인 영역
     col1, col2 = st.columns([1, 1])
-    
+
     with col1:
         st.subheader("📥 이메일 입력")
-        
-        # 업로드된 파일 처리
-        email_input = ""
-        if uploaded_file is not None:
-            try:
-                file_content = uploaded_file.read()
-                file_extension = uploaded_file.name.split('.')[-1].lower()
-                
-                if file_extension == 'eml':
-                    parsed_email = EmailParser.parse_eml_file(file_content)
-                    if parsed_email:
-                        email_input = parsed_email['full_content']
-                        st.success(f"✅ EML 파일이 성공적으로 로드되었습니다: {uploaded_file.name}")
-                        
-                        # 이메일 정보 표시
-                        with st.expander("📧 이메일 정보"):
-                            st.write(f"**제목:** {parsed_email['subject']}")
-                            st.write(f"**발신자:** {parsed_email['sender']}")
-                            st.write(f"**수신자:** {parsed_email['recipients']}")
-                            st.write(f"**날짜:** {parsed_email['date']}")
-                    else:
-                        st.error("EML 파일 파싱에 실패했습니다.")
-                
-                elif file_extension == 'msg':
-                    parsed_email = EmailParser.parse_msg_file(file_content)
-                    if parsed_email:
-                        email_input = parsed_email['full_content']
-                        st.success(f"✅ MSG 파일이 성공적으로 로드되었습니다: {uploaded_file.name}")
-                    else:
-                        st.error("MSG 파일 파싱에 실패했습니다.")
-                
-                elif file_extension == 'txt':
-                    email_input = file_content.decode('utf-8', errors='ignore')
-                    st.success(f"✅ 텍스트 파일이 성공적으로 로드되었습니다: {uploaded_file.name}")
-                
-            except Exception as e:
-                st.error(f"파일 처리 중 오류 발생: {str(e)}")
-        
-        # 예시 이메일 텍스트
-        example_email = ""
-        
-        # 이메일 입력 (파일이 업로드되지 않은 경우)
-        if not email_input:
-            if 'example_email' in st.session_state and st.session_state.example_email:
-                email_input = st.text_area(
-                    "이메일 내용을 입력하세요:",
-                    value=example_email,
-                    height=400,
-                    help="분석할 이메일의 전체 내용을 입력하세요."
-                )
-                st.session_state.example_email = False
-            else:
-                email_input = st.text_area(
-                    "이메일 내용을 입력하세요:",
-                    height=400,
-                    placeholder="제목: 프로젝트 진행 상황 보고\n\n보낸사람: manager@company.com\n받는사람: team@company.com\n\n안녕하세요,\n\n이번 주 프로젝트 진행 상황을 공유드립니다...",
-                    help="분석할 이메일의 전체 내용을 입력하세요."
-                )
-        else:
-            # 파일에서 로드된 내용을 텍스트 영역에 표시 (수정 가능)
-            email_input = st.text_area(
-                "이메일 내용 (수정 가능):",
-                value=email_input,
-                height=400,
-                help="필요시 내용을 수정할 수 있습니다."
+
+        tab1, tab2 = st.tabs(["✍️ 텍스트로 입력/수정", "📎 파일로 업로드"])
+
+        with tab2:
+            # 파일 업로드
+            uploaded_file = st.file_uploader(
+                "이메일 파일 선택",
+                type=['eml', 'msg', 'txt'],
+                help="EML, MSG, 또는 텍스트 파일을 업로드하세요. 업로드 후 '텍스트로 입력/수정' 탭에서 내용을 확인하세요."
             )
-        
+
+            if uploaded_file:
+                try:
+                    file_content = uploaded_file.read()
+                    file_extension = uploaded_file.name.split('.')[-1].lower()
+                    
+                    parsed_content = ""
+                    if file_extension == 'eml':
+                        parsed_email = EmailParser.parse_eml_file(file_content)
+                        if parsed_email:
+                            parsed_content = parsed_email['full_content']
+                            st.success(f"✅ EML 파일({uploaded_file.name})을 성공적으로 로드했습니다.")
+                        else:
+                            st.error("EML 파일 파싱에 실패했습니다.")
+                    
+                    elif file_extension == 'msg':
+                        parsed_email = EmailParser.parse_msg_file(file_content)
+                        if parsed_email:
+                            parsed_content = parsed_email['full_content']
+                            st.success(f"✅ MSG 파일({uploaded_file.name})을 성공적으로 로드했습니다.")
+                        else:
+                            st.error("MSG 파일 파싱에 실패했습니다.")
+
+                    elif file_extension == 'txt':
+                        parsed_content = file_content.decode('utf-8', errors='ignore')
+                        st.success(f"✅ 텍스트 파일({uploaded_file.name})을 성공적으로 로드했습니다.")
+                    
+                    if parsed_content:
+                        st.session_state.email_input = parsed_content
+                        st.info("파일 내용이 로드되었습니다. '텍스트로 입력/수정' 탭에서 확인 및 수정할 수 있습니다.")
+
+                except Exception as e:
+                    st.error(f"파일 처리 중 오류 발생: {str(e)}")
+
+        with tab1:
+            # 텍스트 입력
+            st.session_state.email_input = st.text_area(
+                "이메일 내용을 입력하거나 수정하세요:",
+                value=st.session_state.email_input,
+                height=400,
+                placeholder="이곳에 이메일 내용을 붙여넣거나, 파일 업로드 후 내용을 확인/수정하세요.",
+                help="분석할 이메일의 전체 내용을 입력하세요."
+            )
+
         # 분석 버튼
         analyze_button = st.button(
-            "🔍 이메일 분석하기", 
+            "🔍 이메일 분석하기",
             type="primary",
             use_container_width=True
         )
-    
+
     with col2:
         st.subheader("📊 분석 결과")
-        
+
         if analyze_button:
-            if not azure_endpoint or not api_key:
-                st.error("Azure OpenAI 설정을 완료해주세요.")
-                return
-            
-            if not email_input.strip():
+            email_to_analyze = st.session_state.email_input
+            if not email_to_analyze.strip():
                 st.error("분석할 이메일 내용을 입력해주세요.")
                 return
-            
+
             # 분석 진행
             with st.spinner("이메일을 분석하는 중입니다... 잠시만 기다려주세요."):
                 analyzer = EmailAnalyzer()
-                
-                if analyzer.initialize_azure_openai(azure_endpoint, api_key, api_version):
-                    result = analyzer.analyze_email(email_input, model_name)
-                    
+
+                if analyzer.initialize_azure_openai(endpoint, api_key, api_version):
+                    result = analyzer.analyze_email(email_to_analyze, model_name)
+
                     if result:
                         # 분석 결과 표시
                         display_analysis_result(result)
-                        
+
                         # 세션에 결과 저장
                         if 'analysis_history' not in st.session_state:
                             st.session_state.analysis_history = []
-                        
+
                         st.session_state.analysis_history.append({
                             'timestamp': datetime.now(),
-                            'email': email_input[:100] + "..." if len(email_input) > 100 else email_input,
-                            'email_full': email_input,
+                            'email': email_to_analyze[:100] + "..." if len(email_to_analyze) > 100 else email_to_analyze,
+                            'email_full': email_to_analyze,
                             'result': result
                         })
-                        
+
                         # 내보내기 및 일정 연동 버튼들
                         st.markdown("---")
                         st.subheader("📤 결과 내보내기 & 일정 연동")
-                        
+
                         export_col1, export_col2, export_col3 = st.columns(3)
-                        
+
                         with export_col1:
                             # PDF 내보내기
-                            if st.button("📄 PDF 내보내기", use_container_width=True):
+                            if st.button("📄 PDF 내보내기", use_container_width=True, key="pdf_export"):
                                 try:
-                                    pdf_data = ExportManager.create_pdf_report(result, email_input)
+                                    pdf_data = ExportManager.create_pdf_report(result, email_to_analyze)
                                     st.download_button(
                                         label="📥 PDF 다운로드",
                                         data=pdf_data,
@@ -771,10 +725,10 @@ def main():
                                     )
                                 except Exception as e:
                                     st.error(f"PDF 생성 오류: {str(e)}")
-                        
+
                         with export_col2:
                             # Excel 내보내기
-                            if st.button("📊 Excel 내보내기", use_container_width=True):
+                            if st.button("📊 Excel 내보내기", use_container_width=True, key="excel_export"):
                                 try:
                                     excel_data = ExportManager.create_excel_report(result)
                                     st.download_button(
@@ -786,12 +740,12 @@ def main():
                                     )
                                 except Exception as e:
                                     st.error(f"Excel 생성 오류: {str(e)}")
-                        
+
                         with export_col3:
                             # 일정 내보내기
-                            if result.get('tasks') and st.button("📅 일정 내보내기", use_container_width=True):
+                            if result.get('tasks') and st.button("📅 일정 내보내기", use_container_width=True, key="cal_export"):
                                 try:
-                                    email_subject = email_input.split('\n')[0].replace('제목:', '').strip()
+                                    email_subject = email_to_analyze.split('\n')[0].replace('제목:', '').strip()
                                     calendar_data = ExportManager.create_calendar_zip(result['tasks'], email_subject)
                                     st.download_button(
                                         label="📥 일정 다운로드 (ZIP)",
@@ -802,7 +756,7 @@ def main():
                                     )
                                 except Exception as e:
                                     st.error(f"일정 생성 오류: {str(e)}")
-                        
+
                         # 일정 미리보기
                         if result.get('tasks'):
                             st.markdown("---")
@@ -813,17 +767,17 @@ def main():
                                 use_container_width=True,
                                 hide_index=True
                             )
-                            
+
                             # 개별 일정 파일 다운로드
                             st.markdown("**개별 일정 다운로드:**")
                             for i, task in enumerate(result['tasks'], 1):
                                 col_task, col_download = st.columns([3, 1])
-                                
+
                                 with col_task:
                                     st.write(f"{i}. {task.get('task', '')}")
-                                
+
                                 with col_download:
-                                    email_subject = email_input.split('\n')[0].replace('제목:', '').strip()
+                                    email_subject = email_to_analyze.split('\n')[0].replace('제목:', '').strip()
                                     ics_content = CalendarIntegration.create_ics_event(task, email_subject)
                                     if ics_content:
                                         st.download_button(
@@ -833,21 +787,21 @@ def main():
                                             mime="text/calendar",
                                             key=f"download_task_{i}"
                                         )
-        
+
         # 이전 분석 결과가 있다면 표시
         elif 'analysis_history' in st.session_state and st.session_state.analysis_history:
             st.info("👆 위의 '이메일 분석하기' 버튼을 클릭하여 새로운 분석을 시작하세요.")
             with st.expander("📜 최근 분석 결과 보기"):
                 latest_result = st.session_state.analysis_history[-1]['result']
                 display_analysis_result(latest_result)
-                
+
                 # 최근 결과에 대한 내보내기 기능
                 st.markdown("---")
                 st.subheader("📤 최근 결과 내보내기")
-                
+
                 recent_col1, recent_col2, recent_col3 = st.columns(3)
                 latest_email = st.session_state.analysis_history[-1]['email_full']
-                
+
                 with recent_col1:
                     try:
                         pdf_data = ExportManager.create_pdf_report(latest_result, latest_email)
@@ -860,7 +814,7 @@ def main():
                         )
                     except Exception as e:
                         st.error(f"PDF 생성 오류: {str(e)}")
-                
+
                 with recent_col2:
                     try:
                         excel_data = ExportManager.create_excel_report(latest_result)
@@ -873,7 +827,7 @@ def main():
                         )
                     except Exception as e:
                         st.error(f"Excel 생성 오류: {str(e)}")
-                
+
                 with recent_col3:
                     if latest_result.get('tasks'):
                         try:
@@ -888,20 +842,20 @@ def main():
                             )
                         except Exception as e:
                             st.error(f"일정 생성 오류: {str(e)}")
-    
+
     # 분석 히스토리
     if 'analysis_history' in st.session_state and len(st.session_state.analysis_history) > 1:
         st.markdown("---")
         st.subheader("📜 분석 히스토리")
-        
+
         # 히스토리 관리 버튼
         hist_col1, hist_col2 = st.columns([1, 4])
-        
+
         with hist_col1:
             if st.button("🗑️ 히스토리 삭제", help="모든 분석 히스토리를 삭제합니다"):
                 st.session_state.analysis_history = []
                 st.rerun()
-        
+
         with hist_col2:
             # 전체 히스토리 Excel 내보내기
             if st.button("📊 전체 히스토리 Excel 내보내기"):
@@ -918,7 +872,7 @@ def main():
                             '긴급도': str(result.get('urgency_level', '')),
                             '감정톤': str(result.get('sentiment', ''))
                         }
-                        
+
                         # 할일이 있는 경우
                         if result.get('tasks') and len(result['tasks']) > 0:
                             for j, task in enumerate(result['tasks']):
@@ -942,16 +896,16 @@ def main():
                                 '담당자': '-'
                             })
                             all_data.append(row_data)
-                    
+
                     if all_data:
                         df = pd.DataFrame(all_data)
                         buffer = io.BytesIO()
-                        
+
                         with pd.ExcelWriter(buffer, engine='openpyxl') as writer:
                             df.to_excel(writer, sheet_name='전체히스토리', index=False)
-                        
+
                         buffer.seek(0)
-                        
+
                         st.download_button(
                             label="📥 전체 히스토리 다운로드",
                             data=buffer.getvalue(),
@@ -964,16 +918,16 @@ def main():
                 except Exception as e:
                     st.error(f"히스토리 Excel 생성 오류: {str(e)}")
                     st.info("히스토리 내보내기에 실패했습니다. 데이터를 확인해주세요.")
-        
+
         for i, history in enumerate(reversed(st.session_state.analysis_history[:-1])):
             with st.expander(f"분석 {len(st.session_state.analysis_history)-i-1}: {history['timestamp'].strftime('%Y-%m-%d %H:%M')}"):
                 st.text(f"이메일 미리보기: {history['email']}")
                 display_analysis_result(history['result'])
-                
+
                 # 개별 히스토리 내보내기
                 st.markdown("**이 결과 내보내기:**")
                 hist_export_col1, hist_export_col2, hist_export_col3 = st.columns(3)
-                
+
                 with hist_export_col1:
                     try:
                         pdf_data = ExportManager.create_pdf_report(history['result'], history['email_full'])
@@ -986,7 +940,7 @@ def main():
                         )
                     except Exception as e:
                         st.error(f"PDF 생성 오류: {str(e)}")
-                
+
                 with hist_export_col2:
                     try:
                         excel_data = ExportManager.create_excel_report(history['result'])
@@ -999,7 +953,7 @@ def main():
                         )
                     except Exception as e:
                         st.error(f"Excel 생성 오류: {str(e)}")
-                
+
                 with hist_export_col3:
                     if history['result'].get('tasks'):
                         try:
@@ -1014,47 +968,38 @@ def main():
                             )
                         except Exception as e:
                             st.error(f"일정 생성 오류: {str(e)}")
-    
+
     # 사용법 안내
     with st.expander("ℹ️ 사용법 안내"):
         st.markdown("""
         ### 📧 이메일 분석기 사용법
-        
-        #### 1. 설정
-        - 사이드바에서 Azure OpenAI 정보를 입력하세요
-        - API 키, 엔드포인트, 모델명이 모두 필요합니다
-        
-        #### 2. 이메일 입력
-        **방법 1: 직접 입력**
-        - 텍스트 영역에 이메일 내용을 붙여넣기
-        
-        **방법 2: 파일 업로드**
-        - EML, MSG, TXT 파일 지원
-        - 사이드바에서 파일을 업로드하면 자동으로 파싱됩니다
                 
-        #### 3. 분석 결과 활용
+        #### 1. 이메일 입력
+        **방법 1: 텍스트로 입력/수정**
+        - '텍스트로 입력/수정' 탭에서 이메일 내용을 직접 붙여넣거나 수정합니다.
+        
+        **방법 2: 파일로 업로드**
+        - '파일로 업로드' 탭에서 EML, MSG, TXT 파일을 업로드합니다.
+        - 업로드된 내용은 '텍스트로 입력/수정' 탭에 자동으로 표시됩니다.
+                
+        #### 2. 분석 결과 활용
         **화면 보기**
-        - 요약, 할일 목록, 긴급도 등을 바로 확인
+        - 요약, 할일 목록, 긴급도 등을 바로 확인합니다.
         
         **내보내기**
-        - 📄 **PDF**: 완전한 보고서 형태로 내보내기
-        - 📊 **Excel**: 할일 목록을 표 형태로 관리
-        - 📅 **일정**: ICS 파일로 캘린더 앱에 바로 추가
+        - 📄 **PDF**: 완전한 보고서 형태로 내보냅니다.
+        - 📊 **Excel**: 할일 목록을 표 형태로 관리합니다.
+        - 📅 **일정**: ICS 파일로 캘린더 앱에 바로 추가합니다.
         
-        #### 4. 일정 연동
-        - 추출된 할일들이 자동으로 일정으로 변환
-        - 우선순위, 마감일, 담당자 정보 포함
-        - Google Calendar, Outlook 등에서 바로 사용 가능
-        
-        #### 5. 히스토리 관리
-        - 모든 분석 결과가 자동 저장
-        - 이전 분석 결과 재확인 및 내보내기 가능
-        - 전체 히스토리를 Excel로 통합 관리
+        #### 3. 히스토리 관리
+        - 모든 분석 결과는 자동 저장됩니다.
+        - 이전 분석 결과를 재확인하고 내보낼 수 있습니다.
+        - 전체 히스토리를 Excel로 통합 관리할 수 있습니다.
         
         ### 💡 팁
-        - 이메일이 길수록 더 정확한 분석이 가능합니다
-        - 마감일이 명시된 업무는 자동으로 일정에 반영됩니다
-        - PDF 보고서는 회의나 보고용으로 활용하세요
+        - 이메일이 길수록 더 정확한 분석이 가능합니다.
+        - 마감일이 명시된 업무는 자동으로 일정에 반영됩니다.
+        - PDF 보고서는 회의나 보고용으로 활용하세요.
         """)
 
 def display_analysis_result(result: Dict[str, Any]):
@@ -1068,7 +1013,7 @@ def display_analysis_result(result: Dict[str, Any]):
     with col1:
         urgency_color = {
             'high': '🔴',
-            'medium': '🟡', 
+            'medium': '🟡',
             'low': '🟢'
         }
         st.metric("긴급도", f"{urgency_color.get(result.get('urgency_level', 'medium'), '🟡')} {result.get('urgency_level', 'medium').upper()}")
