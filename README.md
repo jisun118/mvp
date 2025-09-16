@@ -1,6 +1,7 @@
 # 📧 이메일 업무 분석기
 
 Azure OpenAI 서비스를 활용하여 이메일의 내용을 분석하고, 주요 업무를 요약 및 추출하여 생산성을 높여주는 Streamlit 웹 애플리케이션입니다.
+
 바로가기 : [https://mvp-sunny-project-h3fvhmfbfagsg4d9.eastus2-01.azurewebsites.net]
 
 ## ✨ 주요 기능
