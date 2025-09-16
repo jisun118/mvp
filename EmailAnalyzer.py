@@ -189,52 +189,40 @@ class ExportManager:
     """결과 내보내기 관리 클래스"""
 
     @staticmethod
-    def setup_korean_fonts():
-        """한글 폰트 설정"""
-        try:
-            # 시스템에 따른 기본 한글 폰트 경로들
-            font_paths = []
-            system = platform.system()
-            
-            if system == "Windows":
-                font_paths = [
-                    "C:/Windows/Fonts/malgun.ttf",  # 맑은 고딕
-                    "C:/Windows/Fonts/gulim.ttc",   # 굴림
-                    "C:/Windows/Fonts/batang.ttc",  # 바탕
-                ]
-            elif system == "Darwin":  # macOS
-                font_paths = [
-                    "/System/Library/Fonts/AppleSDGothicNeo.ttc",
-                    "/Library/Fonts/AppleGothic.ttf",
-                    "/System/Library/Fonts/Helvetica.ttc",
-                ]
-            else:  # Linux
-                font_paths = [
-                    "/usr/share/fonts/truetype/nanum/NanumGothic.ttf",
-                    "/usr/share/fonts/truetype/dejavu/DejaVuSans.ttf",
-                    "/usr/share/fonts/TTF/NanumGothic.ttf",
-                ]
-            
-            # 폰트 등록 시도
-            for font_path in font_paths:
-                try:
-                    if os.path.exists(font_path):
-                        pdfmetrics.registerFont(TTFont('Korean', font_path))
-                        return 'Korean'
-                except Exception as e:
-                    continue
-            
-            # 로컬 폰트가 없으면 구글 폰트에서 다운로드 시도
+    def download_and_register_font():
+        """나눔고딕 폰트를 다운로드하고 등록합니다."""
+        font_dir = "fonts"
+        font_path = os.path.join(font_dir, "NanumGothic.ttf")
+        font_url = "https://github.com/google/fonts/raw/main/ofl/nanumgothic/NanumGothic-Regular.ttf"
+
+        if not os.path.exists(font_path):
             try:
-                return ExportManager.download_and_register_font()
-            except:
-                # 모든 시도가 실패하면 기본 폰트 사용
+                os.makedirs(font_dir, exist_ok=True)
+                with st.spinner(f"한글 폰트를 다운로드합니다... ({font_path})"):
+                    import urllib.request
+                    urllib.request.urlretrieve(font_url, font_path)
+            except Exception as e:
+                st.error(f"폰트 다운로드 실패: {e}")
                 return 'Helvetica'
-                
+
+        try:
+            pdfmetrics.registerFont(TTFont('Korean', font_path))
+            return 'Korean'
         except Exception as e:
-            # 오류 발생 시 기본 폰트 사용
+            st.error(f"폰트 등록 실패: {e}")
             return 'Helvetica'
-    
+
+    @staticmethod
+    def setup_korean_fonts():
+        """한글 폰트 설정 (나눔고딕 다운로드 방식)"""
+        try:
+            # 이미 등록되었는지 확인
+            pdfmetrics.getFont('Korean')
+            return 'Korean'
+        except KeyError:
+            # 등록되지 않았다면 다운로드 및 등록
+            return ExportManager.download_and_register_font()
+
     @staticmethod
     def create_korean_styles(font_name='Korean'):
         """한글 지원 스타일 생성"""
