@@ -1,4 +1,3 @@
-from dotenv import load_dotenv
 import streamlit as st
 import openai
 from openai import AzureOpenAI
@@ -26,13 +25,6 @@ import zipfile
 import tempfile
 import os
 import platform
-
-load_dotenv()
-
-endpoint= os.getenv("AZURE_OPENAI_ENDPOINT")
-api_key= os.getenv("AZURE_OPENAI_API_KEY")
-api_version= os.getenv("AZURE_OPENAI_API_VERSION")
-model_name= os.getenv("AZURE_OPENAI_MODEL_NAME")
 
 # 페이지 설정
 st.set_page_config(
@@ -511,7 +503,7 @@ class EmailAnalyzer:
     def __init__(self):
         self.client = None
     
-    def initialize_azure_openai(self, endpoint: str, api_key: str, api_version: str="2024-02-15-preview"):
+    def initialize_azure_openai(self, endpoint: str, api_key: str, api_version: str = "2023-12-01-preview"):
         """Azure OpenAI 클라이언트 초기화"""
         try:
             self.client = AzureOpenAI(
@@ -524,7 +516,7 @@ class EmailAnalyzer:
             st.error(f"Azure OpenAI 연결 실패: {str(e)}")
             return False
     
-    def analyze_email(self, email_content: str, model_name: str="gpt=4") -> Dict[str, Any]:
+    def analyze_email(self, email_content: str, model_name: str = "gpt-4") -> Dict[str, Any]:
         """이메일 내용을 분석하여 업무 요약과 할일 추출"""
         if not self.client:
             raise Exception("Azure OpenAI 클라이언트가 초기화되지 않았습니다.")
@@ -608,6 +600,45 @@ def main():
     if 'email_input' not in st.session_state:
         st.session_state.email_input = ""
 
+    # 사이드바 - 설정
+    with st.sidebar:
+        st.header("🔧 설정")
+        
+        # Azure OpenAI 설정
+        st.subheader("Azure OpenAI 설정")
+        
+        # 환경변수에서 값 가져오기
+        env_endpoint = os.getenv("AZURE_OPENAI_ENDPOINT")
+        env_api_key = os.getenv("AZURE_OPENAI_API_KEY")
+
+        azure_endpoint = st.text_input(
+            "Azure OpenAI Endpoint",
+            value=env_endpoint if env_endpoint else "",
+            placeholder="https://your-resource.openai.azure.com/",
+            help="Azure OpenAI 리소스의 엔드포인트 URL. 환경변수 `AZURE_OPENAI_ENDPOINT`로 설정 가능"
+        )
+        
+        api_key = st.text_input(
+            "API Key", 
+            type="password",
+            value=env_api_key if env_api_key else "",
+            help="Azure OpenAI API 키. 환경변수 `AZURE_OPENAI_API_KEY`로 설정 가능"
+        )
+        
+        model_name = st.text_input(
+            "모델 이름", 
+            value="gpt-4",
+            help="배포된 모델의 이름 (예: gpt-4, gpt-35-turbo)"
+        )
+        
+        api_version = st.selectbox(
+            "API 버전",
+            ["2023-12-01-preview", "2023-10-01-preview", "2023-08-01-preview"],
+            index=0
+        )
+        
+        st.markdown("---")
+
     # 메인 영역
     col1, col2 = st.columns([1, 1])
 
@@ -678,6 +709,10 @@ def main():
         st.subheader("📊 분석 결과")
 
         if analyze_button:
+            if not azure_endpoint or not api_key:
+                st.error("Azure OpenAI 설정을 완료해주세요.")
+                return
+
             email_to_analyze = st.session_state.email_input
             if not email_to_analyze.strip():
                 st.error("분석할 이메일 내용을 입력해주세요.")
@@ -687,7 +722,7 @@ def main():
             with st.spinner("이메일을 분석하는 중입니다... 잠시만 기다려주세요."):
                 analyzer = EmailAnalyzer()
 
-                if analyzer.initialize_azure_openai(endpoint, api_key, api_version):
+                if analyzer.initialize_azure_openai(azure_endpoint, api_key, api_version):
                     result = analyzer.analyze_email(email_to_analyze, model_name)
 
                     if result:
@@ -973,8 +1008,12 @@ def main():
     with st.expander("ℹ️ 사용법 안내"):
         st.markdown("""
         ### 📧 이메일 분석기 사용법
-                
-        #### 1. 이메일 입력
+        
+        #### 1. 설정
+        - 사이드바에서 Azure OpenAI 정보를 입력하세요. 환경변수로도 설정 가능합니다.
+        - (`AZURE_OPENAI_ENDPOINT`, `AZURE_OPENAI_API_KEY`)
+        
+        #### 2. 이메일 입력
         **방법 1: 텍스트로 입력/수정**
         - '텍스트로 입력/수정' 탭에서 이메일 내용을 직접 붙여넣거나 수정합니다.
         
@@ -982,7 +1021,7 @@ def main():
         - '파일로 업로드' 탭에서 EML, MSG, TXT 파일을 업로드합니다.
         - 업로드된 내용은 '텍스트로 입력/수정' 탭에 자동으로 표시됩니다.
                 
-        #### 2. 분석 결과 활용
+        #### 3. 분석 결과 활용
         **화면 보기**
         - 요약, 할일 목록, 긴급도 등을 바로 확인합니다.
         
@@ -991,7 +1030,7 @@ def main():
         - 📊 **Excel**: 할일 목록을 표 형태로 관리합니다.
         - 📅 **일정**: ICS 파일로 캘린더 앱에 바로 추가합니다.
         
-        #### 3. 히스토리 관리
+        #### 4. 히스토리 관리
         - 모든 분석 결과는 자동 저장됩니다.
         - 이전 분석 결과를 재확인하고 내보낼 수 있습니다.
         - 전체 히스토리를 Excel로 통합 관리할 수 있습니다.
@@ -1013,7 +1052,7 @@ def display_analysis_result(result: Dict[str, Any]):
     with col1:
         urgency_color = {
             'high': '🔴',
-            'medium': '🟡',
+            'medium': '🟡', 
             'low': '🟢'
         }
         st.metric("긴급도", f"{urgency_color.get(result.get('urgency_level', 'medium'), '🟡')} {result.get('urgency_level', 'medium').upper()}")
